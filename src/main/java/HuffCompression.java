@@ -16,8 +16,7 @@ public class HuffCompression {
             paddingBits = 0;
 
             FileInputStream inStream = new FileInputStream(src);
-            byte[] b = new byte[inStream.available()];
-            inStream.read(b);
+            byte[] b = inStream.readAllBytes();
             byte[] huffmanBytes = createZip(b);
             OutputStream outStream = new FileOutputStream(dst);
             ObjectOutputStream objectOutStream = new ObjectOutputStream(outStream);
@@ -31,6 +30,7 @@ public class HuffCompression {
     }
 
     private static byte[] createZip(byte[] bytes) {
+        if (bytes.length == 0) return new byte[0];
         MinPriorityQueue<ByteNode> nodes = getByteNodes(bytes);
         ByteNode root = createHuffmanTree(nodes);
         Map<Byte, String> huffmanCodes = getHuffCodes(root);
@@ -66,7 +66,11 @@ public class HuffCompression {
     }
 
     private static Map<Byte, String> getHuffCodes(ByteNode root) {
-        if (root == null) return null;
+        if (root == null) return huffmap;
+        if (root.data != null) {          // only one distinct byte: the root is a leaf
+            huffmap.put(root.data, "0");
+            return huffmap;
+        }
         getHuffCodes(root.left, "0", sb);
         getHuffCodes(root.right, "1", sb);
         return huffmap;
@@ -84,27 +88,21 @@ public class HuffCompression {
         }
     }
 
+
     private static byte[] zipBytesWithCodes(byte[] bytes, Map<Byte, String> huffCodes) {
         StringBuilder strBuilder = new StringBuilder();
         for (byte b : bytes)
             strBuilder.append(huffCodes.get(b));
 
-        // Calculate and store padding bits BEFORE packing into bytes
+        // Pad on the RIGHT so the last byte is left-aligned
         int totalBits = strBuilder.length();
-        paddingBits = (8 - (totalBits % 8)) % 8;  // 0 if already multiple of 8
+        paddingBits = (8 - (totalBits % 8)) % 8;
+        for (int p = 0; p < paddingBits; p++)
+            strBuilder.append('0');
 
-        int length = (totalBits + 7) / 8;
-        byte[] huffCodeBytes = new byte[length];
-        int idx = 0;
-        for (int i = 0; i < strBuilder.length(); i += 8) {
-            String strByte;
-            if (i + 8 > strBuilder.length())
-                strByte = strBuilder.substring(i);   // last partial byte (padded by parseInt)
-            else
-                strByte = strBuilder.substring(i, i + 8);
-            huffCodeBytes[idx] = (byte) Integer.parseInt(strByte, 2);
-            idx++;
-        }
+        byte[] huffCodeBytes = new byte[strBuilder.length() / 8];
+        for (int i = 0, idx = 0; i < strBuilder.length(); i += 8, idx++)
+            huffCodeBytes[idx] = (byte) Integer.parseInt(strBuilder.substring(i, i + 8), 2);
         return huffCodeBytes;
     }
 
@@ -115,7 +113,6 @@ public class HuffCompression {
             byte[] huffmanBytes = (byte[]) objectInStream.readObject();
             Map<Byte, String> huffmanCodes = (Map<Byte, String>) objectInStream.readObject();
             int padding = objectInStream.readInt();   // read padding count
-
             byte[] bytes = decomp(huffmanCodes, huffmanBytes, padding);
             OutputStream outStream = new FileOutputStream(dst);
             outStream.write(bytes);

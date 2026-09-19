@@ -28,3 +28,10 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+.idea/
+out/
+build/
+.gradle/
+*.iml
+*.huff
